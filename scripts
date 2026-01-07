@@ -1,0 +1,84 @@
+/* What cities and states have the most customers? */
+select 
+customer_city ,customer_state,count(*) as city_count
+from olist_customers_dataset
+group by customer_city,customer_state 
+order by count(*) desc ;
+
+/*How many orders we replaced on each day?*/
+
+select order_purchase_timestamp::date,count(*)
+from olist_orders_dataset
+group by order_purchase_timestamp::date
+order by order_purchase_timestamp::date;
+
+/*What are the most popular dates for orders? */
+
+select order_purchase_timestamp::date,count(*)
+from olist_orders_dataset
+group by order_purchase_timestamp::date
+order by count(*) desc;
+
+/*In 24/11/2017 was black friday*/
+
+/*What product categories have the most orders?*/
+
+select 
+t.product_category_name_english,count(*) as count_orders 
+from olist_products_dataset p
+inner join olist_order_items_dataset oi
+on p.product_id = oi.product_id
+inner join product_category_name_translation t
+on p.product_category_name = t.product_category_name 
+group by t.product_category_name_english 
+order by  count_orders desc ; 
+
+/*What is the average difference each month between an order's estimated and actual delivery
+date?*/
+
+select 
+date_part('Year',order_purchase_timestamp::timestamp ) as order_year,
+date_part('Month',order_purchase_timestamp::timestamp ) as order_month,
+justify_interval(AVG(order_estimated_delivery_date::timestamp - order_delivered_customer_date::timestamp)) as date_diff
+from olist_orders_dataset
+where order_status ='delivered'
+and order_delivered_customer_date != ''
+group by order_year,order_month  ;
+
+/*Which orders were delivered later than the monthly average of the difference between an
+estimated and actual delivery date?*/
+
+SELECT
+order_id,
+order_year,
+order_month,
+actual_delivery_date,
+estimated_delivery_date,
+date_diff,
+avg_month_diff
+FROM (
+	SELECT
+		order_id,
+		order_year,
+		order_month,
+		actual_delivery_date,
+		estimated_delivery_date,
+		estimated_delivery_date- actual_delivery_date AS date_diff,
+		AVG(estimated_delivery_date- actual_delivery_date)
+		OVER (PARTITION BY
+		order_year,
+		order_month
+		) AS avg_month_diff
+		FROM (
+			SELECT
+			order_id,
+			DATE_PART('year', order_purchase_timestamp::timestamp) as order_year,
+			DATE_PART('month', order_purchase_timestamp::timestamp) as order_month,
+			order_delivered_customer_date::timestamp as actual_delivery_date,
+			order_estimated_delivery_date::timestamp as estimated_delivery_date
+			FROM olist_orders_dataset
+			WHERE order_status = 'delivered'
+			AND order_delivered_customer_date != ''
+		) s
+	) t
+WHERE date_diff < avg_month_diff;
